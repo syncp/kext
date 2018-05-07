@@ -100,7 +100,9 @@ fuse_filehandle_get(vnode_t       vp,
 #if M_OSXFUSE_ENABLE_BIG_LOCK
             fuse_biglock_unlock(data->biglock);
 #endif
-            fuse_internal_vnode_disappear(vp, context, REVOKE_SOFT);
+            with_aux_unlock(fvdat, "vnode disappear") {
+                fuse_internal_vnode_disappear(vp, context, REVOKE_SOFT);
+            }
 #if M_OSXFUSE_ENABLE_BIG_LOCK
             fuse_biglock_lock(data->biglock);
 #endif

@@ -23,6 +23,11 @@ FSNodeScrub(struct fuse_vnode_data *fvdat)
     lck_mtx_free(fvdat->createlock, fuse_lock_group);
     lck_mtx_free(fvdat->getattr_lock, fuse_lock_group);
 #if M_OSXFUSE_ENABLE_TSLOCKING
+
+# if M_OSXFUSE_ENABLE_AUX_FSNODE_LOCK
+    lck_mtx_free(fvdat->aux_nodelock, fuse_lock_group);
+# endif
+
     lck_rw_free(fvdat->nodelock, fuse_lock_group);
     lck_rw_free(fvdat->truncatelock, fuse_lock_group);
 #endif
@@ -131,6 +136,11 @@ FSNodeGetOrCreateFileVNodeByID(vnode_t              *vnPtr,
             fvdat->getattr_lock = lck_mtx_alloc_init(fuse_lock_group,
                                                      fuse_lock_attr);
 #if M_OSXFUSE_ENABLE_TSLOCKING
+# if M_OSXFUSE_ENABLE_AUX_FSNODE_LOCK
+            fvdat->aux_nodelockowner = NULL;
+            fvdat->aux_nodelock = lck_mtx_alloc_init(fuse_lock_group,
+                                                     fuse_lock_attr);
+#endif
             fvdat->nodelock = lck_rw_alloc_init(fuse_lock_group,
                                                 fuse_lock_attr);
             fvdat->nodelockowner = NULL;
@@ -314,7 +324,9 @@ fuse_vncache_purge(vnode_t vp)
         fuse_biglock_unlock(data->biglock);
     }
 #endif /* M_OSXFUSE_ENABLE_BIG_LOCK */
-    cache_purge(vp);
+    with_aux_unlock(VTOFUD(vp), "cache_purge") {
+        cache_purge(vp);
+    }
 #if M_OSXFUSE_ENABLE_BIG_LOCK
     if (biglock_locked) {
         fuse_biglock_lock(data->biglock);

@@ -41,6 +41,30 @@ lck_mtx_t      *fuse_device_mutex = NULL;
 
 #if M_OSXFUSE_ENABLE_TSLOCKING
 
+
+#define fusefs_raw_lock(cp, locktype, thread)           \
+    do {                                                \
+        if (locktype == FUSEFS_SHARED_LOCK) {           \
+            lck_rw_lock_shared(cp->nodelock);           \
+            cp->nodelockowner = FUSEFS_SHARED_OWNER;    \
+            fusefs_lock_aux(cp, "nodelock", thread);    \
+        } else {                                        \
+            lck_rw_lock_exclusive(cp->nodelock);        \
+            cp->nodelockowner = thread;                 \
+        }                                               \
+    } while(0)
+
+#define fusefs_raw_unlock(cp)                           \
+    do {                                                \
+        if (cp->nodelockowner == FUSEFS_SHARED_OWNER) { \
+            fusefs_unlock_aux(cp, "nodelock");          \
+        }                                               \
+        else {                                          \
+            cp->nodelockowner = NULL;                   \
+        }                                               \
+        fusefs_lck_rw_done(cp->nodelock);               \
+    } while(0)
+
 /*
  * Largely identical to HFS+ locking. Much of the code is from hfs_cnode.c.
  */
@@ -56,26 +80,19 @@ fusefs_lock(fusenode_t cp, enum fusefslocktype locktype)
     void *thread = current_thread();
 
 restart:
-    if (locktype == FUSEFS_SHARED_LOCK) {
-        lck_rw_lock_shared(cp->nodelock);
-        cp->nodelockowner = FUSEFS_SHARED_OWNER;
-    } else {
-        lck_rw_lock_exclusive(cp->nodelock);
-        cp->nodelockowner = thread;
-    }
-
+    fusefs_raw_lock(cp, locktype, thread);
     /*
      * Skip nodes that no longer exist (were deleted).
      */
-    if ((locktype != FUSEFS_FORCE_LOCK) && (cp->c_flag & C_NOEXISTS)) {
-        fusefs_unlock(cp);
+    if (cp->c_flag & C_NOEXISTS) {
+        fusefs_raw_unlock(cp);
         err = ENOENT;
         goto out;
     }
 
     if (cp->flag & FN_GETATTR && cp->getattr_thread != thread) {
         fuse_lck_mtx_lock(cp->getattr_lock);
-        fusefs_unlock(cp);
+        fusefs_raw_unlock(cp);
 
         while (true) {
             err = msleep(cp->getattr_thread, cp->getattr_lock, PDROP | PCATCH,
@@ -87,7 +104,6 @@ restart:
             }
         }
     }
-
 out:
     return err;
 }
@@ -257,8 +273,7 @@ fusefs_unlock(fusenode_t cp)
     }
 #endif
 
-    cp->nodelockowner = NULL;
-    fusefs_lck_rw_done(cp->nodelock);
+    fusefs_raw_unlock(cp);
 
     /* Perform any vnode post processing after fusenode lock is dropped. */
     if (vp) {
@@ -564,9 +579,13 @@ void fusefs_recursive_lock_wakeup(__unused fusefs_recursive_lock *lock,
 }
 #endif
 
-#if M_OSXFUSE_ENABLE_LOCK_LOGGING
+#if M_OSXFUSE_ENABLE_LOCK_LOGGING || M_OSXFUSE_ENABLE_STATIC_LOGMSG
 lck_mtx_t *fuse_log_lock = NULL;
 #endif /* M_OSXFUSE_ENABLE_LOCK_LOGGING */
+
+#if M_OSXFUSE_ENABLE_STATIC_LOGMSG
+char logmsg_buf[LOGMSG_BUF_SIZE];
+#endif
 
 #if M_OSXFUSE_ENABLE_HUGE_LOCK
 fusefs_recursive_lock *fuse_huge_lock = NULL;

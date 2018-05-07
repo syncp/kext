@@ -102,6 +102,10 @@ struct fuse_vnode_data {
     lck_rw_t  *nodelock;
     void      *nodelockowner;
 
+# if M_OSXFUSE_ENABLE_AUX_FSNODE_LOCK
+    lck_mtx_t *aux_nodelock;
+    void      *aux_nodelockowner;
+#endif 
     /*
      * The truncatelock guards against the EOF changing on us (that is, a
      * file resize) unexpectedly.

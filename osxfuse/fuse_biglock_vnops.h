@@ -79,37 +79,66 @@
 		return res; \
 	} while(0)
 
+#if FUSE_TRACE_OP_LOCK
+# define _trace_locked_vnop_enter(nodeid, vnop) tracenode(nodeid, "BIGLOCK " #vnop "() {")
+# define _trace_locked_vnop_exit(nodeid, vnop)  tracenode(nodeid, "} BIGLOCK " #vnop "()")
+#else
+# define _trace_locked_vnop_enter(args...)
+# define _trace_locked_vnop_exit(args...)
+#endif
+
 /** Wrapper that surrounds a vnop call with biglock locking. */
-#define locked_vnop(vnode, vnop, args) \
-	do { \
-		int res; \
-		vnode_t vp = (vnode); \
-		struct fuse_data *data __unused = \
-			fuse_get_mpdata(vnode_mount(vp)); \
-		fuse_biglock_lock(data->biglock); \
-		res = vnop(args); \
-		fuse_biglock_unlock(data->biglock); \
-		return res; \
-	} while(0)
+#define locked_vnop(vnode, vnop, args)          \
+	({                                          \
+		int res;                                \
+		vnode_t vp = (vnode);                   \
+		struct fuse_data *data __unused =       \
+			fuse_get_mpdata(vnode_mount(vp));   \
+        uint64_t nodeid __unused = VTOILLU(vp); \
+        _trace_locked_vnop_enter(nodeid, vnop); \
+		fuse_biglock_lock(data->biglock);       \
+		res = vnop(args);                       \
+		fuse_biglock_unlock(data->biglock);     \
+        _trace_locked_vnop_exit(nodeid, vnop);  \
+		res;                                    \
+	})
+
+
+#if FUSE_TRACE_OP_LOCK
+# define _trace_nodelocked_vnop_enter(nodeid, vnop, type) tracenode(nodeid, "NODELOCK %s: " #vnop "() {", type == FUSEFS_SHARED_LOCK ? "SHARED" : "EXCLUSIVE")
+# define _trace_nodelocked_vnop_exit(nodeid, vnop, type)  tracenode(nodeid, "} NODELOCK %s: " #vnop "()", type == FUSEFS_SHARED_LOCK ? "SHARED" : "EXCLUSIVE")
+#else
+# define _trace_nodelocked_vnop_enter(args...)
+# define _trace_nodelocked_vnop_exit(args...)
+#endif
+
+#define fuse_nodelock_type(cp) ((cp)->nodelockowner == FUSEFS_SHARED_OWNER ? FUSEFS_SHARED_LOCK : FUSEFS_EXCLUSIVE_LOCK)
+
 
 /**
  * Wrapper that surrounds a vnop call with biglock locking and single-node
  * locking.
  */
-#define nodelocked_vnop(vnode, vnop, args) \
-	do { \
-		int res; \
-		vnode_t vp = (vnode); \
-		struct fuse_data *data __unused = \
-			fuse_get_mpdata(vnode_mount(vp)); \
-		struct fuse_vnode_data *node = VTOFUD(vp); \
-		fuse_nodelock_lock(node, FUSEFS_EXCLUSIVE_LOCK); \
-		fuse_biglock_lock(data->biglock); \
-		res = vnop(args); \
-		fuse_biglock_unlock(data->biglock); \
-		fuse_nodelock_unlock(node); \
-		return res; \
+#define nodelocked_vnop_ext(vnode, vnop, args, type)        \
+	do {                                                    \
+		int res;                                            \
+		vnode_t vp = (vnode);                               \
+		struct fuse_data *data __unused =                   \
+			fuse_get_mpdata(vnode_mount(vp));               \
+		struct fuse_vnode_data *node = VTOFUD(vp);          \
+        uint64_t nodeid __unused = VTOILLU(vp);             \
+        _trace_nodelocked_vnop_enter(nodeid, vnop, type);   \
+		fuse_nodelock_lock(node, type);                     \
+        fuse_biglock_lock(data->biglock);                   \
+        res = vnop(args);                                   \
+        fuse_biglock_unlock(data->biglock);                 \
+        fuse_nodelock_unlock(node);                         \
+        _trace_nodelocked_vnop_exit(nodeid, vnop, type);    \
+		return res;                                         \
 	} while(0)
+
+#define nodelocked_vnop(vnode, vnop, args) nodelocked_vnop_ext(vnode, vnop, args, FUSEFS_EXCLUSIVE_LOCK)
+#define shared_nodelocked_vnop(vnode, vnop, args) nodelocked_vnop_ext(vnode, vnop, args, FUSEFS_SHARED_LOCK)
 
 /**
  * Wrapper that surrounds a vnop call with biglock locking and dual node

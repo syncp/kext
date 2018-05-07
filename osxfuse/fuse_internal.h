@@ -622,8 +622,10 @@ fuse_internal_attr_loadvap(vnode_t vp, struct vnode_attr *out_vap,
 #if M_OSXFUSE_ENABLE_BIG_LOCK
             fuse_biglock_unlock(data->biglock);
 #endif
-            (void)ubc_msync(vp, (off_t)0, fvdat->filesize, NULL,
-                            UBC_PUSHALL | UBC_INVALIDATE | UBC_SYNC);
+            with_aux_unlock(fvdat, "ubc_msync on filesize update") {
+                (void)ubc_msync(vp, (off_t)0, fvdat->filesize, NULL,
+                                UBC_PUSHALL | UBC_INVALIDATE | UBC_SYNC);
+            }
 #if M_OSXFUSE_ENABLE_BIG_LOCK
             fuse_biglock_lock(data->biglock);
 #endif
@@ -635,7 +637,9 @@ fuse_internal_attr_loadvap(vnode_t vp, struct vnode_attr *out_vap,
 #if M_OSXFUSE_ENABLE_BIG_LOCK
             fuse_biglock_unlock(data->biglock);
 #endif
-            ubc_setsize(vp, fvdat->filesize);
+            with_aux_unlock(fvdat, "ubc_setsize on filesize update") {
+                ubc_setsize(vp, fvdat->filesize);
+            }
 #if M_OSXFUSE_ENABLE_BIG_LOCK
             fuse_biglock_lock(data->biglock);
 #endif
@@ -681,8 +685,10 @@ fuse_internal_attr_loadvap(vnode_t vp, struct vnode_attr *out_vap,
 #if M_OSXFUSE_ENABLE_BIG_LOCK
             fuse_biglock_unlock(data->biglock);
 #endif
-            (void)ubc_msync(vp, (off_t)0, fvdat->filesize, NULL,
-                            UBC_PUSHALL | UBC_INVALIDATE | UBC_SYNC);
+            with_aux_unlock(fvdat, "ubc_msync on time update") {
+                (void)ubc_msync(vp, (off_t)0, fvdat->filesize, NULL,
+                    UBC_PUSHALL | UBC_INVALIDATE | UBC_SYNC);
+            }
 #if M_OSXFUSE_ENABLE_BIG_LOCK
             fuse_biglock_lock(data->biglock);
 #endif
