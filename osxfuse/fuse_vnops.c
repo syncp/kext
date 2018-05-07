@@ -2783,11 +2783,26 @@ fuse_vnop_read(struct vnop_read_args *ap)
         return EINVAL;
     }
 
+    /*
+     * Dispatch Finder and QuickLookUIHelper request directly to userspace
+     * daemon
+     */
+    bool is_finder = false;
+    bool is_qluihelper = false;
+    struct proc *p = current_proc();
+    int pid = proc_pid(p);
+    if (pid > 0) {
+        char pnbuf[512] = {0};
+        proc_name(pid, pnbuf, 512);
+        is_finder = !strncmp(pnbuf, "Finder", sizeof("Finder")-1);
+        is_qluihelper = !strncmp(pnbuf, "QuickLookUIHelpe", sizeof("QuickLookUIHelpe")-1);
+    }
     /* Protect against size change here. */
 
     data = fuse_get_mpdata(vnode_mount(vp));
 
-    if (!fuse_isdirectio(vp)) {
+    if (! (is_finder || is_qluihelper || fuse_isdirectio(vp))) {
+
         int res = 0;
         if (fuse_isnoubc(vp)) {
             /* In case we get here through a short cut (e.g. no open). */
