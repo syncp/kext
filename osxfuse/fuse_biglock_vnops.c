@@ -25,7 +25,7 @@ FUSE_VNOP_EXPORT
 int
 fuse_biglock_vnop_access(struct vnop_access_args *ap)
 {
-	nodelocked_vnop(ap->a_vp, fuse_vnop_access, ap);
+	shared_nodelocked_vnop(ap->a_vp, fuse_vnop_access, ap);
 }
 
 /*
@@ -58,7 +58,7 @@ FUSE_VNOP_EXPORT
 int
 fuse_biglock_vnop_blktooff(struct vnop_blktooff_args *ap)
 {
-	locked_vnop(ap->a_vp, fuse_vnop_blktooff, ap);
+	return locked_vnop(ap->a_vp, fuse_vnop_blktooff, ap);
 }
 
 /*
@@ -78,7 +78,7 @@ FUSE_VNOP_EXPORT
 int
 fuse_biglock_vnop_blockmap(struct vnop_blockmap_args *ap)
 {
-	locked_vnop(ap->a_vp, fuse_vnop_blockmap, ap);
+	return locked_vnop(ap->a_vp, fuse_vnop_blockmap, ap);
 }
 
 /*
@@ -95,7 +95,7 @@ fuse_biglock_vnop_close(struct vnop_close_args *ap)
 {
 	/* Note: kpi_vfs.c does not take the node lock if vnode type is VCHR,
 	 * VFIFO or VSOCK. I'm not sure if this is relevant here. */
-	nodelocked_vnop(ap->a_vp, fuse_vnop_close, ap);
+	shared_nodelocked_vnop(ap->a_vp, fuse_vnop_close, ap);
 }
 
 /*
@@ -158,7 +158,7 @@ FUSE_VNOP_EXPORT
 int
 fuse_biglock_vnop_getattr(struct vnop_getattr_args *ap)
 {
-	nodelocked_vnop(ap->a_vp, fuse_vnop_getattr, ap);
+	shared_nodelocked_vnop(ap->a_vp, fuse_vnop_getattr, ap);
 }
 
 #if M_OSXFUSE_ENABLE_XATTR
@@ -177,7 +177,7 @@ FUSE_VNOP_EXPORT
 int
 fuse_biglock_vnop_getxattr(struct vnop_getxattr_args *ap)
 {
-	nodelocked_vnop(ap->a_vp, fuse_vnop_getxattr, ap);
+	shared_nodelocked_vnop(ap->a_vp, fuse_vnop_getxattr, ap);
 }
 #endif /* M_OSXFUSE_ENABLE_XATTR */
 
@@ -192,7 +192,7 @@ FUSE_VNOP_EXPORT
 int
 fuse_biglock_vnop_inactive(struct vnop_inactive_args *ap)
 {
-	nodelocked_vnop(ap->a_vp, fuse_vnop_inactive, ap);
+	shared_nodelocked_vnop(ap->a_vp, fuse_vnop_inactive, ap);
 }
 
 /*
@@ -282,7 +282,7 @@ FUSE_VNOP_EXPORT
 int
 fuse_biglock_vnop_listxattr(struct vnop_listxattr_args *ap)
 {
-	nodelocked_vnop(ap->a_vp, fuse_vnop_listxattr, ap);
+	shared_nodelocked_vnop(ap->a_vp, fuse_vnop_listxattr, ap);
 }
 #endif /* M_OSXFUSE_ENABLE_XATTR */
 
@@ -303,7 +303,7 @@ fuse_biglock_vnop_lookup(struct vnop_lookup_args *ap)
 	 * has the flags ISLASTCN and LOCKPARENT set, and if the flag
 	 * FSNODELOCKHELD is not set. We only have access to the ISLASTCN and
 	 * LOCKPARENT flags, so we can't do this but should we, and why? */
-	nodelocked_vnop(ap->a_dvp, fuse_vnop_lookup, ap);
+	shared_nodelocked_vnop(ap->a_dvp, fuse_vnop_lookup, ap);
 }
 
 /*
@@ -381,7 +381,7 @@ FUSE_VNOP_EXPORT
 int
 fuse_biglock_vnop_offtoblk(struct vnop_offtoblk_args *ap)
 {
-	locked_vnop(ap->a_vp, fuse_vnop_offtoblk, ap);
+	return locked_vnop(ap->a_vp, fuse_vnop_offtoblk, ap);
 }
 
 /*
@@ -398,7 +398,7 @@ fuse_biglock_vnop_open(struct vnop_open_args *ap)
 {
 	/* Note: kpi_vfs.c does not take the node lock if vnode type is VCHR,
 	 * VFIFO or VSOCK. I'm not sure if this is relevant here. */
-	nodelocked_vnop(ap->a_vp, fuse_vnop_open, ap);
+	shared_nodelocked_vnop(ap->a_vp, fuse_vnop_open, ap);
 }
 
 /*
@@ -417,7 +417,7 @@ FUSE_VNOP_EXPORT
 int
 fuse_biglock_vnop_pagein(struct vnop_pagein_args *ap)
 {
-	locked_vnop(ap->a_vp, fuse_vnop_pagein, ap);
+	return locked_vnop(ap->a_vp, fuse_vnop_pagein, ap);
 }
 
 /*
@@ -436,7 +436,7 @@ FUSE_VNOP_EXPORT
 int
 fuse_biglock_vnop_pageout(struct vnop_pageout_args *ap)
 {
-	locked_vnop(ap->a_vp, fuse_vnop_pageout, ap);
+	return locked_vnop(ap->a_vp, fuse_vnop_pageout, ap);
 }
 
 /*
@@ -452,7 +452,7 @@ FUSE_VNOP_EXPORT
 int
 fuse_biglock_vnop_pathconf(struct vnop_pathconf_args *ap)
 {
-	nodelocked_vnop(ap->a_vp, fuse_vnop_pathconf, ap);
+	shared_nodelocked_vnop(ap->a_vp, fuse_vnop_pathconf, ap);
 }
 
 /*
@@ -470,7 +470,7 @@ fuse_biglock_vnop_read(struct vnop_read_args *ap)
 {
 	/* Note: kpi_vfs.c does not take the node lock if vnode type is VCHR,
 	 * VFIFO or VSOCK. I'm not sure if this is relevant here. */
-	nodelocked_vnop(ap->a_vp, fuse_vnop_read, ap);
+	shared_nodelocked_vnop(ap->a_vp, fuse_vnop_read, ap);
 }
 
 /*
@@ -488,7 +488,7 @@ FUSE_VNOP_EXPORT
 int
 fuse_biglock_vnop_readdir(struct vnop_readdir_args *ap)
 {
-	nodelocked_vnop(ap->a_vp, fuse_vnop_readdir, ap);
+	shared_nodelocked_vnop(ap->a_vp, fuse_vnop_readdir, ap);
 }
 
 /*
@@ -503,7 +503,7 @@ FUSE_VNOP_EXPORT
 int
 fuse_biglock_vnop_readlink(struct vnop_readlink_args *ap)
 {
-	nodelocked_vnop(ap->a_vp, fuse_vnop_readlink, ap);
+	shared_nodelocked_vnop(ap->a_vp, fuse_vnop_readlink, ap);
 }
 
 /*
@@ -517,7 +517,7 @@ FUSE_VNOP_EXPORT
 int
 fuse_biglock_vnop_reclaim(struct vnop_reclaim_args *ap)
 {
-	locked_vnop(ap->a_vp, fuse_vnop_reclaim, ap);
+	return locked_vnop(ap->a_vp, fuse_vnop_reclaim, ap);
 }
 
 /*
@@ -551,7 +551,7 @@ FUSE_VNOP_EXPORT
 int
 fuse_biglock_vnop_removexattr(struct vnop_removexattr_args *ap)
 {
-	nodelocked_vnop(ap->a_vp, fuse_vnop_removexattr, ap);
+	shared_nodelocked_vnop(ap->a_vp, fuse_vnop_removexattr, ap);
 }
 #endif /* M_OSXFUSE_ENABLE_XATTR */
 
@@ -591,7 +591,7 @@ FUSE_VNOP_EXPORT
 int
 fuse_biglock_vnop_revoke(struct vnop_revoke_args *ap)
 {
-	locked_vnop(ap->a_vp, fuse_vnop_revoke, ap);
+	return locked_vnop(ap->a_vp, fuse_vnop_revoke, ap);
 }
 
 /*
@@ -661,7 +661,7 @@ FUSE_VNOP_EXPORT
 int
 fuse_biglock_vnop_setxattr(struct vnop_setxattr_args *ap)
 {
-	nodelocked_vnop(ap->a_vp, fuse_vnop_setxattr, ap);
+	shared_nodelocked_vnop(ap->a_vp, fuse_vnop_setxattr, ap);
 }
 #endif /* M_OSXFUSE_ENABLE_XATTR */
 
@@ -678,7 +678,12 @@ fuse_biglock_vnop_strategy(struct vnop_strategy_args *ap)
 #if 1
 	/* Now trying out a locked version of strategy. We need to hold a lock
 	 * as the underlying layers expect it. */
-	locked_vnop(buf_vnode(ap->a_bp), fuse_vnop_strategy, ap);
+    int ret = 0;
+    fusenode_t fvdat = VTOFUD(buf_vnode(ap->a_bp));
+    with_aux_lock(fvdat, "locked_vnop") {
+        ret = locked_vnop(buf_vnode(ap->a_bp), fuse_vnop_strategy, ap);
+    }
+    return ret;
 #else
     /* WARNING: nodelock and biglock are released and reacquired in
      *          fuse_internal_strategy. Calling fuse_vnop_strategy directly

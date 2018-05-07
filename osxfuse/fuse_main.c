@@ -33,7 +33,7 @@ fini_stuff(void)
     }
 #endif /* M_OSXFUSE_ENABLE_HUGE_LOCK */
 
-#if M_OSXFUSE_ENABLE_LOCK_LOGGING
+#if M_OSXFUSE_ENABLE_LOCK_LOGGING || M_OSXFUSE_ENABLE_STATIC_LOGMSG
     if (fuse_log_lock) {
         lck_mtx_free(fuse_log_lock, fuse_lock_group);
         fuse_log_lock = NULL;
@@ -93,7 +93,7 @@ init_stuff(void)
     }
 
 #if M_OSXFUSE_ENABLE_INTERIM_FSNODE_LOCK
-#if M_OSXFUSE_ENABLE_LOCK_LOGGING
+#if M_OSXFUSE_ENABLE_LOCK_LOGGING || M_OSXFUSE_ENABLE_STATIC_LOGMSG
     if (ret == KERN_SUCCESS) {
         fuse_log_lock = lck_mtx_alloc_init(fuse_lock_group, fuse_lock_attr);
         if (fuse_log_lock == NULL) {

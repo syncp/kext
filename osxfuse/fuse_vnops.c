@@ -362,10 +362,17 @@ fuse_vnop_close(struct vnop_close_args *ap)
 #if M_OSXFUSE_ENABLE_BIG_LOCK
         fuse_biglock_unlock(data->biglock);
 #endif
-        (void)cluster_push(vp, IO_SYNC | IO_CLOSE);
+        with_aux_unlock(fvdat, "cluster_push") {
+            (void)cluster_push(vp, IO_SYNC | IO_CLOSE);
+        }
 #if M_OSXFUSE_ENABLE_BIG_LOCK
         fuse_biglock_lock(data->biglock);
 #endif
+    }
+
+    if (fuse_isdeadfs(vp)) {
+        tracenode(VTOILLU(vp), "DEADFS");
+        return 0;
     }
 
     if (fuse_implemented(data, FSESS_NOIMPLBIT(FLUSH))) {
@@ -780,6 +787,8 @@ fuse_vnop_getattr(struct vnop_getattr_args *ap)
     int dataflags;
 
     data = fuse_get_mpdata(vnode_mount(vp));
+    fvdat = VTOFUD(vp);
+    dataflags = data->dataflags;
 
     fuse_trace_printf_vnop();
 
@@ -787,7 +796,8 @@ fuse_vnop_getattr(struct vnop_getattr_args *ap)
         if (vnode_isvroot(vp)) {
             goto fake;
         } else {
-            return ENXIO;
+            err = ENXIO;
+            goto ret;
         }
     }
 
@@ -803,9 +813,6 @@ fuse_vnop_getattr(struct vnop_getattr_args *ap)
         CHECK_BLANKET_DENIAL(vp, context, ENOENT);
     }
 
-    fvdat = VTOFUD(vp);
-    dataflags = data->dataflags;
-
     /*
      * Note: We are not bailing out on a dead file system just yet
      */
@@ -816,13 +823,13 @@ fuse_vnop_getattr(struct vnop_getattr_args *ap)
         if (vap != VTOVA(vp)) {
             fuse_internal_attr_loadvap(vp, vap, context);
         }
-        return 0;
+        goto ret;
     }
 
     if (!(dataflags & FSESS_INITED) && !vnode_isvroot(vp)) {
         fdata_set_dead(data, false);
         err = ENOTCONN;
-        return err;
+        goto ret;
     }
 
     /*
@@ -862,18 +869,21 @@ fuse_vnop_getattr(struct vnop_getattr_args *ap)
     if (err) {
         if ((err == ENOTCONN) && vnode_isvroot(vp)) {
             /* see comment at similar place in fuse_statfs() */
+            err = 0;
             goto fake;
         }
         if (err == ENOENT) {
 #if M_OSXFUSE_ENABLE_BIG_LOCK
             fuse_biglock_unlock(data->biglock);
 #endif
-            fuse_internal_vnode_disappear(vp, context, REVOKE_SOFT);
+            with_aux_unlock(fvdat, "vnode disappear #1") {
+                fuse_internal_vnode_disappear(vp, context, REVOKE_SOFT);
+            }
 #if M_OSXFUSE_ENABLE_BIG_LOCK
             fuse_biglock_lock(data->biglock);
 #endif
         }
-        return err;
+        goto ret;
     }
 
     fuse_abi_data_init(&fao, DATOI(data), fdi.answ);
@@ -883,7 +893,8 @@ fuse_vnop_getattr(struct vnop_getattr_args *ap)
 
     if ((fuse_attr_get_mode(&fa) & S_IFMT) == 0) {
         fuse_ticket_release(fdi.tick);
-        return EIO;
+        err = EIO;
+        goto ret;
     }
 
     cache_attrs(vp, fuse_attr_out, &fao);
@@ -936,23 +947,25 @@ fuse_vnop_getattr(struct vnop_getattr_args *ap)
 #if M_OSXFUSE_ENABLE_BIG_LOCK
             fuse_biglock_unlock(data->biglock);
 #endif
-            fuse_internal_vnode_disappear(vp, context, REVOKE_SOFT);
+            with_aux_unlock(fvdat, "vnode disappear #2") {
+                fuse_internal_vnode_disappear(vp, context, REVOKE_SOFT);
+            }
 #if M_OSXFUSE_ENABLE_BIG_LOCK
             fuse_biglock_lock(data->biglock);
 #endif
-            return EIO;
+            err = EIO;
         }
     }
 
-    return 0;
-
+    goto ret;
 fake:
     VATTR_RETURN(vap, va_type, vnode_vtype(vp));
     VATTR_RETURN(vap, va_uid, kauth_cred_getuid(data->daemoncred));
     VATTR_RETURN(vap, va_gid, kauth_cred_getgid(data->daemoncred));
     VATTR_RETURN(vap, va_mode, S_IRWXU);
 
-    return 0;
+ret:
+    return err;
 }
 
 #if M_OSXFUSE_ENABLE_XATTR
@@ -2025,13 +2038,14 @@ retry:
          * - We make sure that no other thread opens the file while the
          *   fusenode lock is released before proceeding.
          */
+        int locktype = fuse_nodelock_type(fvdat);
         fuse_biglock_unlock(data->biglock);
         fuse_nodelock_unlock(fvdat);
 #endif
         err = fuse_filehandle_preflight_status(vp, fvdat->parentvp,
                                                context, fufh_type);
 #if M_OSXFUSE_ENABLE_BIG_LOCK
-        fuse_nodelock_lock(fvdat, FUSEFS_EXCLUSIVE_LOCK);
+        fuse_nodelock_lock(fvdat, locktype);
         fuse_biglock_lock(data->biglock);
 #endif
 
@@ -2330,13 +2344,14 @@ fuse_vnop_open(struct vnop_open_args *ap)
                  * - fufh points to the file handle determined by fufh_type and
                  *   is verified after the contender is woken up.
                  */
+                int locktype = fuse_nodelock_type(fvdat);
                 fuse_biglock_unlock(data->biglock);
-                fuse_nodelock_unlock(VTOFUD(vp));
+                fuse_nodelock_unlock(fvdat);
 #endif
                 error = fuse_msleep(fvdat->creator, fvdat->createlock,
                                     PDROP | PINOD | PCATCH, "fuse_open", NULL, NULL);
 #if M_OSXFUSE_ENABLE_BIG_LOCK
-                fuse_nodelock_lock(VTOFUD(vp), FUSEFS_EXCLUSIVE_LOCK);
+                fuse_nodelock_lock(fvdat, locktype);
                 fuse_biglock_lock(data->biglock);
 #endif
 
@@ -2410,8 +2425,10 @@ ok:
 #if M_OSXFUSE_ENABLE_BIG_LOCK
         fuse_biglock_unlock(data->biglock);
 #endif
-        ubc_msync(vp, (off_t)0, ubc_getsize(vp), NULL,
-                  UBC_PUSHALL | UBC_INVALIDATE);
+        with_aux_unlock(fvdat, "ubc_msync") {
+            ubc_msync(vp, (off_t)0, ubc_getsize(vp), NULL,
+                      UBC_PUSHALL | UBC_INVALIDATE);
+        }
 #if M_OSXFUSE_ENABLE_BIG_LOCK
         fuse_biglock_lock(data->biglock);
 #endif
@@ -2449,7 +2466,9 @@ ok:
 #if M_OSXFUSE_ENABLE_BIG_LOCK
                     fuse_biglock_unlock(data->biglock);
 #endif
-                    ubc_setsize(vp, (off_t)new_filesize);
+                    with_aux_unlock(fvdat, "ubc_setsize") {
+                        ubc_setsize(vp, (off_t)new_filesize);
+                    }
 #if M_OSXFUSE_ENABLE_BIG_LOCK
                     fuse_biglock_lock(data->biglock);
 #endif
@@ -2711,6 +2730,8 @@ fuse_vnop_read(struct vnop_read_args *ap)
 
     int err = EIO;
 
+    thread_t thread = current_thread();
+
     /*
      * XXX: Locking
      *
@@ -2722,8 +2743,9 @@ fuse_vnop_read(struct vnop_read_args *ap)
      * unlock(truncatelock)
      */
 
-    fuse_trace_printf_vnop();
-
+    //fuse_trace_printf_vnop();
+    uint64_t nid = VTOILLU(vp);
+    tracenode(nid, "uio_iovcnt=%d, uio_offset=%lld, uio_curriovlen=%llu", uio_iovcnt(uio), uio_offset(uio), uio_curriovlen(uio));
     if (fuse_isdeadfs(vp)) {
         if (!vnode_ischr(vp)) {
             return ENXIO;
@@ -2766,7 +2788,7 @@ fuse_vnop_read(struct vnop_read_args *ap)
     data = fuse_get_mpdata(vnode_mount(vp));
 
     if (!fuse_isdirectio(vp)) {
-        int res;
+        int res = 0;
         if (fuse_isnoubc(vp)) {
             /* In case we get here through a short cut (e.g. no open). */
             ioflag |= IO_NOCACHE;
@@ -2774,7 +2796,10 @@ fuse_vnop_read(struct vnop_read_args *ap)
 #if M_OSXFUSE_ENABLE_BIG_LOCK
         fuse_biglock_unlock(data->biglock);
 #endif
-        res = cluster_read(vp, uio, fvdat->filesize, ioflag);
+        with_aux_unlock(fvdat, "cluster_read") {
+            res = cluster_read(vp, uio, fvdat->filesize, ioflag);
+        }
+
 #if M_OSXFUSE_ENABLE_BIG_LOCK
         fuse_biglock_lock(data->biglock);
 #endif
@@ -2811,6 +2836,10 @@ fuse_vnop_read(struct vnop_read_args *ap)
         fdisp_init(&fdi, 0);
 
         while (uio_resid(uio) > 0) {
+            if (fuse_isdeadfs(vp)) {
+                tracenode(fvdat->nodeid, "DEADFS");
+                return 0;
+            }
             fdi.iosize = fuse_read_in_sizeof(DATOI(data));
             fdisp_make_vp(&fdi, FUSE_READ, vp, context);
             fuse_abi_data_init(&fri, DATOI(data), fdi.indata);
@@ -2820,7 +2849,17 @@ fuse_vnop_read(struct vnop_read_args *ap)
             fuse_read_in_set_size(&fri, (uint32_t)min((size_t)uio_resid(uio), VTOVA(vp)->va_iosize));
             fuse_read_in_set_flags(&fri, 0);
 
-            err = fdisp_wait_answ(&fdi);
+#if M_OSXFUSE_ENABLE_BIG_LOCK
+            fuse_biglock_unlock(data->biglock);
+#endif
+            with_aux_unlock(fvdat, "wait for READ", thread) {
+                err = fdisp_wait_answ(&fdi);
+            }
+
+#if M_OSXFUSE_ENABLE_BIG_LOCK
+            fuse_biglock_lock(data->biglock);
+#endif
+
             if (err) {
                 return err;
             }
@@ -2828,7 +2867,9 @@ fuse_vnop_read(struct vnop_read_args *ap)
 #if M_OSXFUSE_ENABLE_BIG_LOCK
             fuse_biglock_unlock(data->biglock);
 #endif
-            err = uiomove(fdi.answ, (int)min(fuse_read_in_get_size(&fri), fdi.iosize), uio);
+            with_aux_unlock(fvdat, "uiomove", thread) {
+                err = uiomove(fdi.answ, (int)min(fuse_read_in_get_size(&fri), fdi.iosize), uio);
+            }
 #if M_OSXFUSE_ENABLE_BIG_LOCK
             fuse_biglock_lock(data->biglock);
 #endif
@@ -2992,7 +3033,9 @@ fuse_vnop_readlink(struct vnop_readlink_args *ap)
 #if M_OSXFUSE_ENABLE_BIG_LOCK
         fuse_biglock_unlock(data->biglock);
 #endif
-        err = uiomove(fdi.answ, (int)fdi.iosize, uio);
+        with_aux_unlock(VTOFUD(vp), "uiomove") {
+            err = uiomove(fdi.answ, (int)fdi.iosize, uio);
+        }
 #if M_OSXFUSE_ENABLE_BIG_LOCK
         fuse_biglock_lock(data->biglock);
 #endif
@@ -3025,7 +3068,6 @@ fuse_vnop_reclaim(struct vnop_reclaim_args *ap)
     HNodeRef hn;
 
     fuse_trace_printf_vnop();
-
     if (!fvdat) {
         panic("osxfuse: no vnode data during recycling");
     }

@@ -173,7 +173,9 @@ fuse_internal_access(vnode_t                   vp,
 #if M_OSXFUSE_ENABLE_BIG_LOCK
         fuse_biglock_unlock(data->biglock);
 #endif
-        fuse_internal_vnode_disappear(vp, context, REVOKE_SOFT);
+        with_aux_unlock(VTOFUD(vp), "vnode disappear") {
+            fuse_internal_vnode_disappear(vp, context, REVOKE_SOFT);
+        }
 #if M_OSXFUSE_ENABLE_BIG_LOCK
         fuse_biglock_lock(data->biglock);
 #endif
@@ -1155,7 +1157,7 @@ fuse_internal_strategy(vnode_t vp, buf_t bp)
 
     int err = 0;
 
-    caddr_t bufdat;
+    caddr_t bufdat = NULL;
     off_t   left;
     off_t   offset;
     int32_t bflags = buf_flags(bp);
@@ -1199,13 +1201,15 @@ fuse_internal_strategy(vnode_t vp, buf_t bp)
              * See fuse_vnop_open for more details.
              */
             fuse_biglock_unlock(data->biglock);
-            fuse_nodelock_unlock(VTOFUD(vp));
+
+            int locktype = fuse_nodelock_type(fvdat);
+            fuse_nodelock_unlock(fvdat);
 #endif
             (void)fuse_msleep(fvdat->creator, fvdat->createlock,
                               PDROP | PINOD | PCATCH, "fuse_internal_strategy",
                               NULL, data);
 #if M_OSXFUSE_ENABLE_BIG_LOCK
-            fuse_nodelock_lock(VTOFUD(vp), FUSEFS_EXCLUSIVE_LOCK);
+            fuse_nodelock_lock(fvdat, locktype);
             fuse_biglock_lock(data->biglock);
 #endif
         } else {
@@ -1318,7 +1322,9 @@ fuse_internal_strategy(vnode_t vp, buf_t bp)
 #if M_OSXFUSE_ENABLE_BIG_LOCK
         fuse_biglock_unlock(data->biglock);
 #endif
-        err = buf_map(bp, &bufdat);
+        with_aux_unlock(fvdat, "buf_map") {
+            err = buf_map(bp, &bufdat);
+        }
 #if M_OSXFUSE_ENABLE_BIG_LOCK
         fuse_biglock_lock(data->biglock);
 #endif
@@ -1362,7 +1368,21 @@ fuse_internal_strategy(vnode_t vp, buf_t bp)
             fdi.tick->tk_aw_type = FT_A_BUF;
             fdi.tick->tk_aw_bufdata = bufdat;
 
-            err = fdisp_wait_answ(&fdi);
+            if (op == FUSE_READ) {
+#if M_OSXFUSE_ENABLE_BIG_LOCK
+                fuse_biglock_unlock(data->biglock);
+#endif
+                with_aux_unlock(fvdat, "wait for READ") {
+                    err = fdisp_wait_answ(&fdi);
+                }
+#if M_OSXFUSE_ENABLE_BIG_LOCK
+                fuse_biglock_lock(data->biglock);
+#endif
+            }
+            else {
+                err = fdisp_wait_answ(&fdi);
+            }
+
             if (err) {
                 /* There was a problem with reading. */
                 goto out;
@@ -1398,7 +1418,9 @@ fuse_internal_strategy(vnode_t vp, buf_t bp)
 #if M_OSXFUSE_ENABLE_BIG_LOCK
         fuse_biglock_unlock(data->biglock);
 #endif
-        err = buf_map(bp, &bufdat);
+        with_aux_unlock(fvdat, "buf_map") {
+            err = buf_map(bp, &bufdat);
+        }
 #if M_OSXFUSE_ENABLE_BIG_LOCK
         fuse_biglock_lock(data->biglock);
 #endif
@@ -1524,12 +1546,14 @@ fuse_internal_strategy_buf(struct vnop_strategy_args *ap)
         data = fuse_get_mpdata(vnode_mount(vp));
 
         if (bupl) {
-            int retval;
+            int retval = 0 ;
 
 #if M_OSXFUSE_ENABLE_BIG_LOCK
             fuse_biglock_unlock(data->biglock);
 #endif
-            retval = cluster_bp(bp);
+            with_aux_unlock(VTOFUD(vp), "cluster_bp") {
+                retval = cluster_bp(bp);
+            }
 #if M_OSXFUSE_ENABLE_BIG_LOCK
             fuse_biglock_lock(data->biglock);
 #endif
