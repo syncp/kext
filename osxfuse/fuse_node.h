@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2006-2008 Amit Singh/Google Inc.
- * Copyright (c) 2011-2017 Benjamin Fleischer
+ * Copyright (c) 2011-2018 Benjamin Fleischer
  * All rights reserved.
  */
 
@@ -36,6 +36,7 @@ enum {
 #define FN_IS_ROOT           0x00000004
 #define FN_REVOKED           0x00000008
 #define FN_GETATTR           0x00000010
+#define FN_NO_AUTO_NOTIFY    0x00000020
 
 #define C_NEED_RVNODE_PUT    0x000000001
 #define C_NEED_DVNODE_PUT    0x000000002
@@ -133,9 +134,13 @@ FUSE_INLINE
 void
 fuse_invalidate_attr(vnode_t vp)
 {
-    if (VTOFUD(vp)) {
-        bzero(&VTOFUD(vp)->attr_valid, sizeof(struct timespec));
-        VTOFUD(vp)->c_flag &= ~C_XTIMES_VALID;
+    struct fuse_vnode_data *fvd = VTOFUD(vp);
+
+    if (fvd) {
+        fvd->flag |= FN_NO_AUTO_NOTIFY;
+
+        bzero(&fvd->attr_valid, sizeof(struct timespec));
+        fvd->c_flag &= ~C_XTIMES_VALID;
     }
 }
 

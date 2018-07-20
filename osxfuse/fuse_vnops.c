@@ -2,7 +2,7 @@
  * Copyright (c) 2006-2008 Amit Singh/Google Inc.
  * Copyright (c) 2010 Tuxera Inc.
  * Copyright (c) 2011-2012 Anatol Pomozov
- * Copyright (c) 2011-2017 Benjamin Fleischer
+ * Copyright (c) 2011-2018 Benjamin Fleischer
  * All rights reserved.
  */
 
@@ -319,7 +319,7 @@ fuse_vnop_close(struct vnop_close_args *ap)
 
     fuse_trace_printf_vnop();
 
-    if (fuse_isdeadfs(vp)) {
+    if (fuse_isdeadfs_mp(vnode_mount(vp))) {
         return 0;
     }
 
@@ -792,12 +792,19 @@ fuse_vnop_getattr(struct vnop_getattr_args *ap)
 
     fuse_trace_printf_vnop();
 
+    /*
+     * Note: Third party kernel extensions might call us with a NULL context.
+     * As a workaround we fall back to the current thread's context. Do not
+     * forget to release context after we are done with it.
+     */
+    context = vfs_context_create(NULL);
+
     if (fuse_isdeadfs(vp)) {
         if (vnode_isvroot(vp)) {
             goto fake;
         } else {
             err = ENXIO;
-            goto ret;
+            goto out;
         }
     }
 
@@ -809,8 +816,9 @@ fuse_vnop_getattr(struct vnop_getattr_args *ap)
          * delete process. Therefore we are no longer blocking calls by root
          * even if allow_root and allow_other are not set.
          */
-    } else {
-        CHECK_BLANKET_DENIAL(vp, context, ENOENT);
+    } else if (fuse_blanket_deny(vp, context)) {
+        err = ENOENT;
+        goto out;
     }
 
     /*
@@ -823,13 +831,13 @@ fuse_vnop_getattr(struct vnop_getattr_args *ap)
         if (vap != VTOVA(vp)) {
             fuse_internal_attr_loadvap(vp, vap, context);
         }
-        goto ret;
+        goto out;
     }
 
     if (!(dataflags & FSESS_INITED) && !vnode_isvroot(vp)) {
         fdata_set_dead(data, false);
         err = ENOTCONN;
-        goto ret;
+        goto out;
     }
 
     /*
@@ -883,7 +891,7 @@ fuse_vnop_getattr(struct vnop_getattr_args *ap)
             fuse_biglock_lock(data->biglock);
 #endif
         }
-        goto ret;
+        goto out;
     }
 
     fuse_abi_data_init(&fao, DATOI(data), fdi.answ);
@@ -894,7 +902,7 @@ fuse_vnop_getattr(struct vnop_getattr_args *ap)
     if ((fuse_attr_get_mode(&fa) & S_IFMT) == 0) {
         fuse_ticket_release(fdi.tick);
         err = EIO;
-        goto ret;
+        goto out;
     }
 
     cache_attrs(vp, fuse_attr_out, &fao);
@@ -954,17 +962,20 @@ fuse_vnop_getattr(struct vnop_getattr_args *ap)
             fuse_biglock_lock(data->biglock);
 #endif
             err = EIO;
+            goto out;
         }
     }
 
-    goto ret;
+    goto out;
+
 fake:
     VATTR_RETURN(vap, va_type, vnode_vtype(vp));
     VATTR_RETURN(vap, va_uid, kauth_cred_getuid(data->daemoncred));
     VATTR_RETURN(vap, va_gid, kauth_cred_getgid(data->daemoncred));
     VATTR_RETURN(vap, va_mode, S_IRWXU);
 
-ret:
+out:
+    vfs_context_rele(context);
     return err;
 }
 
@@ -2388,6 +2399,7 @@ fuse_vnop_open(struct vnop_open_args *ap)
         IOLog("osxfuse: filehandle_get failed in open (type=%d, err=%d)\n",
               fufh_type, error);
         if (error == ENOENT) {
+            /* XXX: We could post a FUSE_VNODE_EVENT_DELETE here. */
             cache_purge(vp);
         }
         return error;
@@ -2448,7 +2460,15 @@ ok:
             fuse_getattr_in_set_getattr_flags(&fgi, FUSE_GETATTR_FH);
             fuse_getattr_in_set_fh(&fgi, fufh->fh_id);
 
-            if (!fdisp_wait_answ(&fdi)) {
+            if (fdisp_wait_answ(&fdi)) {
+                /*
+                 * The request failed. This means we won't be able to detect
+                 * remote file changes reliably, until the next successful
+                 * FUSE_GETATTR or FUSE_LOOKUP.
+                 */
+                fvdat->flag |= FN_NO_AUTO_NOTIFY;
+
+            } else {
                 struct fuse_abi_data fao;
                 struct fuse_abi_data fa;
 
@@ -2458,11 +2478,13 @@ ok:
                 /* XXX: Could check the sanity/volatility of va_mode here. */
                 if ((fuse_attr_get_mode(&fa) & S_IFMT)) {
                     cache_attrs(vp, fuse_attr_out, &fao);
+
                     off_t new_filesize = fuse_attr_get_size(&fa);
-                    if (new_filesize > VTOFUD(vp)->filesize) {
+                    if (new_filesize > fvdat->filesize) {
                         events |= FUSE_VNODE_EVENT_EXTEND;
                     }
-                    VTOFUD(vp)->filesize = new_filesize;
+                    fvdat->filesize = new_filesize;
+
 #if M_OSXFUSE_ENABLE_BIG_LOCK
                     fuse_biglock_unlock(data->biglock);
 #endif
@@ -2472,6 +2494,11 @@ ok:
 #if M_OSXFUSE_ENABLE_BIG_LOCK
                     fuse_biglock_lock(data->biglock);
 #endif
+
+                    fvdat->modify_time.tv_sec = (typeof(fvdat->modify_time.tv_sec))fuse_attr_get_mtime(&fa);
+                    fvdat->modify_time.tv_nsec = fuse_attr_get_mtimensec(&fa);
+
+                    fvdat->flag &= ~FN_NO_AUTO_NOTIFY;
                 }
                 fuse_ticket_release(fdi.tick);
             }
@@ -3992,6 +4019,11 @@ fuse_vnop_write(struct vnop_write_args *ap)
             return EIO;
         } else {
             /* Using existing fufh of type fufh_type. */
+        }
+
+        if (ioflag & IO_APPEND) {
+            /* Arrange for append */
+            uio_setoffset(uio, fvdat->filesize);
         }
 
         fdata_wait_init(data);

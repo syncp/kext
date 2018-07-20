@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2006-2008 Amit Singh/Google Inc.
  * Copyright (c) 2010 Tuxera Inc.
- * Copyright (c) 2012-2016 Benjamin Fleischer
+ * Copyright (c) 2012-2018 Benjamin Fleischer
  * All rights reserved.
  */
 
@@ -183,13 +183,12 @@ struct fuse_data {
     vnode_t                    rootvp;
     enum mount_state           mount_state;
     kauth_cred_t               daemoncred;
-    pid_t                      daemonpid;
     uint32_t                   dataflags;     /* effective fuse_data flags */
     uint64_t                   mountaltflags; /* as-is copy of altflags    */
     uint64_t                   noimplflags;   /* not-implemented flags     */
 
 #if M_OSXFUSE_ENABLE_DSELECT
-    struct fuse_selinfo        d_rsel;
+    struct fuse_kludge_selinfo d_rsel;
 #endif /* M_OSXFUSE_ENABLE_DSELECT */
 
     lck_rw_t                  *rwlock;
