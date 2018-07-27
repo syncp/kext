@@ -75,7 +75,7 @@ enum fusefslocktype {
 #  define fusefs_ensure_unlock_aux(cp, context, thread...)              \
     ({                                                                  \
         bool eau_r_ = false;                                            \
-        thread_t eau_thread_ = ((NULL, ##thread) ?: current_thread());  \
+        thread_t eau_thread_ = (((void*)thread+0) ?: current_thread());  \
         if (cp->aux_nodelockowner == eau_thread_) {                     \
             fusefs_unlock_aux(cp, context);                             \
             eau_r_ = true;                                              \
@@ -86,7 +86,7 @@ enum fusefslocktype {
 #  define fusefs_ensure_lock_aux(cp, context, thread...)                \
     ({                                                                  \
         bool eal_r_ = false;                                            \
-        thread_t eal_thread_ = ((NULL, ##thread) ?: current_thread());  \
+        thread_t eal_thread_ = (((void*)thread+0) ?: current_thread());  \
         if (cp->aux_nodelockowner != eal_thread_) {                     \
             fusefs_lock_aux(cp, context, eal_thread_);                  \
             eal_r_ = true;                                              \
@@ -94,17 +94,13 @@ enum fusefslocktype {
         eal_r_;                                                         \
     })
 
-#  define with_aux_(enter_op, exit_op, cp, context, thread...)  \
-    for (struct fuse_vnode_data* wau_cp_ = cp; wau_cp_ != NULL; wau_cp_ = NULL)     \
-        for (thread_t wau_thread_ = ((NULL, ##thread) ?: current_thread()); wau_thread_ != NULL; wau_thread_ = NULL) \
-            for (bool wau_run_ = true,                                  \
-                     wau_unlock_ = (trace_with_aux_enter(enter_op, wau_cp_, context), \
-                                    fusefs_ensure_ ##enter_op## _aux(wau_cp_, context, wau_thread_)); \
-                 wau_run_ ;                                             \
-                 wau_run_ = ((!wau_unlock_ ?: fusefs_##exit_op## _aux(wau_cp_, context, wau_thread_)), \
-                             trace_with_aux_exit(enter_op, wau_cp_, context), \
-                             false))
-
+#define with_aux_(enter_op, exit_op, cp, context, thread...)            \
+    FUSE_PP_WITH_PREFIX()                                               \
+    FUSE_PP_WITH_ACTION(struct fuse_vnode_data* wau_cp_ = cp)           \
+    FUSE_PP_WITH_ACTION(thread_t wau_thread_ = (((void*)thread+0) ?: current_thread())) \
+    FUSE_PP_WITH_ACTION(bool wau_do_cleanup_ = (trace_with_aux_enter(enter_op, wau_cp_, context), fusefs_ensure_ ##enter_op## _aux(wau_cp_, context, wau_thread_)), \
+               (!wau_do_cleanup_ ?: fusefs_##exit_op## _aux(wau_cp_, context, wau_thread_), trace_with_aux_exit(enter_op, wau_cp_, context))) \
+    FUSE_PP_WITH_SUFFIX()
 
 #  define with_aux_lock(cp, context, thread...)    with_aux_(lock, unlock, cp, context, ##thread)
 #  define with_aux_unlock(cp, context, thread...)  with_aux_(unlock, lock, cp, context, ##thread)
