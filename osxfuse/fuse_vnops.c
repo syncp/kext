@@ -3,6 +3,7 @@
  * Copyright (c) 2010 Tuxera Inc.
  * Copyright (c) 2011-2012 Anatol Pomozov
  * Copyright (c) 2011-2018 Benjamin Fleischer
+ * Copyright (c) 2018 Syncplicity by Axway
  * All rights reserved.
  */
 
