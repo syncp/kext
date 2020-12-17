@@ -19,19 +19,19 @@
 	<key>CFBundleSignature</key>
 	<string>FUSE</string>
 	<key>CFBundleVersion</key>
-	<string>OSXFUSE_VERSION_LITERAL</string>
+	<string>3.8.2</string>
 	<key>OSBundleLibraries</key>
 	<dict>
 		<key>com.apple.kpi.bsd</key>
-		<string>OSXFUSE_KPI_VERSION</string>
+		<string>15.0.0</string>
 		<key>com.apple.kpi.iokit</key>
-		<string>OSXFUSE_KPI_VERSION</string>
+		<string>15.0.0</string>
 		<key>com.apple.kpi.libkern</key>
-		<string>OSXFUSE_KPI_VERSION</string>
+		<string>15.0.0</string>
 		<key>com.apple.kpi.mach</key>
-		<string>OSXFUSE_KPI_VERSION</string>
+		<string>15.0.0</string>
 		<key>com.apple.kpi.unsupported</key>
-		<string>OSXFUSE_KPI_VERSION</string>
+		<string>15.0.0</string>
 	</dict>
 </dict>
 </plist>
