@@ -49,6 +49,7 @@ static struct fuse_device fuse_device_table[OSXFUSE_NDEVICES];
 fuse_device_t
 fuse_device_get(dev_t dev)
 {
+    IOLog("fuse_device_get");
     int unit = minor(dev);
 
     if ((unit < 0) || (unit >= OSXFUSE_NDEVICES)) {
@@ -162,6 +163,7 @@ int
 fuse_device_open(dev_t dev, __unused int flags, __unused int devtype,
                  struct proc *p)
 {
+    IOLog("fuse_device_open");
     int unit;
     struct fuse_device *fdev;
     struct fuse_data   *fdata;
