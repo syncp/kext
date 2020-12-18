@@ -128,6 +128,7 @@ init_stuff(void)
 kern_return_t
 fuse_start(__unused kmod_info_t *ki, __unused void *d)
 {
+    IOLog("fuse_start %d", 1);
     int ret;
 
     ret = init_stuff();
@@ -172,6 +173,7 @@ error:
 kern_return_t
 fuse_stop(__unused kmod_info_t *ki, __unused void *d)
 {
+    IOLog("fuse_stop");
     int ret;
 
     ret = fuse_devices_stop();
