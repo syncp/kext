@@ -24,8 +24,6 @@ fuse_filehandle_get(vnode_t       vp,
                     fufh_type_t   fufh_type,
                     int           mode)
 {
-    IOLog("fuse_filehandle_get begin");
-    
     struct fuse_dispatcher  fdi;
     struct fuse_abi_data    foi;
     struct fuse_abi_data    foo;

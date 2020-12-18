@@ -31,14 +31,14 @@
 #endif
 
 #define FUSE_COUNT_MEMORY     1
-// #define FUSE_DEBUG         1
-// #define FUSE_KDEBUG        1
-// #define FUSE_KTRACE_OP     1
-// #define FUSE_TRACE         1
-// #define FUSE_TRACE_LK      1
-// #define FUSE_TRACE_MSLEEP  1
-// #define FUSE_TRACE_OP      1
-// #define FUSE_TRACE_VNCACHE 1
+#define FUSE_DEBUG         1
+#define FUSE_KDEBUG        1
+#define FUSE_KTRACE_OP     1
+#define FUSE_TRACE         1
+#define FUSE_TRACE_LK      1
+#define FUSE_TRACE_MSLEEP  1
+#define FUSE_TRACE_OP      1
+#define FUSE_TRACE_VNCACHE 1
 
 #define FUSEFS_SIGNATURE 0x55464553 // 'FUSE'
 

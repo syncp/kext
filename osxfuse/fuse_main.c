@@ -11,8 +11,6 @@
 #include "fuse_locking.h"
 #include "fuse_sysctl.h"
 
-#include <os/log.h>
-
 OSMallocTag  fuse_malloc_tag = NULL;
 
 extern struct vfs_fsentry fuse_vfs_entry;
@@ -130,8 +128,7 @@ init_stuff(void)
 kern_return_t
 fuse_start(__unused kmod_info_t *ki, __unused void *d)
 {
-    os_log(OS_LOG_DEFAULT, "syncdrive %s", "start");
-    IOLog("fuse_start %d", 1);
+    IOLog("fuse_start");
     int ret;
 
     ret = init_stuff();
